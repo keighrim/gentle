@@ -17,16 +17,35 @@ RUN DEBIAN_FRONTEND=noninteractive && \
 	apt-get clean
 
 ADD ext /gentle/ext
-RUN export MAKEFLAGS=' -j8' &&  cd /gentle/ext && \
-	./install_kaldi.sh && \
-	make depend && make && rm -rf kaldi *.o
+RUN git clone https://github.com/kaldi-asr/kaldi /gentle/ext/kaldi
+WORKDIR /gentle/ext/kaldi
+RUN git checkout 7ffc9ddeb3c8436e16aece88364462c89672a183
+
+ENV MAKEFLAGS=' -j8' 
+WORKDIR /gentle/ext
+
+# Prepare Kaldi
+WORKDIR /gentle/ext/kaldi/tools
+RUN make 
+RUN ./extras/install_openblas.sh
+WORKDIR /gentle/ext/kaldi/src
+RUN ./configure --static --static-math=yes --static-fst=yes --use-cuda=no --openblas-root=../tools/OpenBLAS/install
+RUN make depend
+
+# build graph binaries that's actually used
+WORKDIR /gentle/ext
+RUN make depend && make 
+
+# removed build residue
+RUN rm -rf kaldi *o
 
 ADD . /gentle
-RUN cd /gentle && python3 setup.py develop
-RUN cd /gentle && ./install_models.sh
+WORKDIR /gentle
+RUN python3 setup.py develop
+RUN ./install_models.sh
 
 EXPOSE 8765
 
 VOLUME /gentle/webdata
 
-CMD cd /gentle && python3 serve.py
+CMD python3 serve.py
